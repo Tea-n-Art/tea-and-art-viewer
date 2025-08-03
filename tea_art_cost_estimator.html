@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tea & Art Cost Estimator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      max-width: 1000px;
+      display: flex;
+    }
+    .form-section {
+      flex: 2;
+    }
+    .sidebar {
+      flex: 1;
+      margin-left: 20px;
+      background: #f4f4f4;
+      padding: 10px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+    input {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+    }
+    button {
+      margin-top: 15px;
+      padding: 10px 20px;
+    }
+    .output {
+      background: #f4f4f4;
+      padding: 10px;
+      margin-top: 15px;
+    }
+    .note {
+      font-size: 0.9em;
+      color: #555;
+      margin-top: 5px;
+    }
+    .estimate-item {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 5px;
+    }
+    .estimate-item button {
+      margin-left: 10px;
+      padding: 0 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="form-section">
+    <h1>Tea & Art Cost Estimator</h1>
+    <label for="productName">Product Name *</label>
+    <input type="text" id="productName" required />
+
+    <label for="grams">Weight (grams)</label>
+    <input type="number" id="grams" value="123" />
+
+    <label for="quantity">Quantity</label>
+    <input type="number" id="quantity" value="1" />
+
+    <label for="costPerGram">Cost per gram (USD)</label>
+    <input type="number" id="costPerGram" value="0.02" />
+
+    <label for="shopifyFees">Shopify Fees (USD)</label>
+    <input type="number" id="shopifyFees" value="0.5" />
+
+    <label for="shop3dFees">Shop3D.io Fees (USD)</label>
+    <input type="number" id="shop3dFees" value="1.5" />
+
+    <label for="handlingFees">Handling Fees (USD)</label>
+    <input type="number" id="handlingFees" value="2" />
+
+    <label for="shippingEstimate">Shipping Estimate (USD)</label>
+    <input type="number" id="shippingEstimate" value="5" />
+
+    <label for="usTaxRate">US Sales Tax (%)</label>
+    <input type="number" id="usTaxRate" value="6.5" />
+
+    <label for="flTaxRate">FL Sales Tax (%)</label>
+    <input type="number" id="flTaxRate" value="7" />
+
+    <label for="intlTaxRate">International Tax (%)</label>
+    <input type="number" id="intlTaxRate" value="12" />
+
+    <label for="intlFee">International Fee (USD)</label>
+    <input type="number" id="intlFee" value="3" />
+
+    <label for="restockFee">Restocking Fee (USD)</label>
+    <input type="number" id="restockFee" value="2.5" />
+
+    <label for="quantityDiscountMax">Quantity Bonus Max (%)</label>
+    <input type="number" id="quantityDiscountMax" value="10" />
+
+    <label for="suggestedPrice">Suggested Price (USD)</label>
+    <input type="number" id="suggestedPrice" />
+
+    <div>
+      <button onclick="estimateCosts()">Estimate</button>
+      <button onclick="estimateSuggested()">Estimate Suggested</button>
+      <button onclick="addToEstimateList()">Add to Cost Estimate CSV</button>
+      <button onclick="downloadCSV()">Download to CSV</button>
+    </div>
+    <div class="output" id="result"></div>
+  </div>
+  <div class="sidebar">
+    <h3>Estimate List</h3>
+    <div id="estimateList"></div>
+  </div>
+
+  <script>
+    let estimateItems = [];
+
+    function getField(id) {
+      return parseFloat(document.getElementById(id).value) || 0;
+    }
+
+    function calculateCosts(overrideSuggested = false) {
+      const grams = getField("grams");
+      const quantity = getField("quantity");
+      const costPerGram = getField("costPerGram");
+      const baseCost = grams * costPerGram;
+
+      const shopify = getField("shopifyFees");
+      const shop3d = getField("shop3dFees");
+      const handling = getField("handlingFees");
+      const shipping = getField("shippingEstimate");
+
+      const usTax = getField("usTaxRate") / 100;
+      const intlTax = getField("intlTaxRate") / 100;
+      const intlFee = getField("intlFee");
+      const restock = getField("restockFee");
+      const quantityBonusMax = getField("quantityDiscountMax") / 100;
+
+      let quantityDiscount = quantity > 1 ? Math.max(1 - quantityBonusMax + (1 / quantity), 1 - quantityBonusMax) : 1;
+
+      const totalCost = (baseCost + shopify + shop3d + handling + shipping) * quantity * quantityDiscount;
+      const domesticTotal = totalCost * (1 + usTax);
+      const intlTotal = totalCost + intlFee + (totalCost * intlTax);
+
+      let suggested = parseFloat(document.getElementById("suggestedPrice").value);
+      if (overrideSuggested || !suggested || suggested < domesticTotal || suggested < intlTotal) {
+        suggested = Math.max(domesticTotal + restock, intlTotal + restock);
+        document.getElementById("suggestedPrice").value = suggested.toFixed(2);
+      }
+
+      const profitMarginDom = (((suggested - domesticTotal) / suggested) * 100).toFixed(1);
+      const profitMarginIntl = (((suggested - intlTotal) / suggested) * 100).toFixed(1);
+
+      return {
+        totalCost: totalCost.toFixed(2),
+        domesticTotal: domesticTotal.toFixed(2),
+        intlTotal: intlTotal.toFixed(2),
+        suggested: suggested.toFixed(2),
+        profitMarginDom,
+        profitMarginIntl
+      };
+    }
+
+    function estimateCosts() {
+      const result = calculateCosts(false);
+      renderResults(result);
+    }
+
+    function estimateSuggested() {
+      const result = calculateCosts(true);
+      renderResults(result);
+    }
+
+    function renderResults(result) {
+      document.getElementById("result").innerHTML =
+        `<strong>Total Cost:</strong> $${result.totalCost}<br>
+         <strong>Domestic Total:</strong> $${result.domesticTotal}<br>
+         <strong>International Total:</strong> $${result.intlTotal}<br>
+         <strong>Suggested Price:</strong> $${result.suggested}<br>
+         <strong>Profit Margin (Domestic):</strong> ${result.profitMarginDom}%<br>
+         <strong>Profit Margin (International):</strong> ${result.profitMarginIntl}%`;
+    }
+
+    function addToEstimateList() {
+      const result = calculateCosts();
+      const name = document.getElementById("productName").value || "Unnamed Product";
+      const item = {
+        name,
+        weight: getField("grams"),
+        quantity: getField("quantity"),
+        costPerGram: getField("costPerGram"),
+        shopifyFees: getField("shopifyFees"),
+        shop3dFees: getField("shop3dFees"),
+        handlingFees: getField("handlingFees"),
+        shipping: getField("shippingEstimate"),
+        usTaxRate: getField("usTaxRate"),
+        flTaxRate: getField("flTaxRate"),
+        intlTaxRate: getField("intlTaxRate"),
+        intlFee: getField("intlFee"),
+        restockFee: getField("restockFee"),
+        quantityBonus: getField("quantityDiscountMax"),
+        totalCost: result.totalCost,
+        domesticTotal: result.domesticTotal,
+        intlTotal: result.intlTotal,
+        suggestedPrice: result.suggested,
+        profitMarginDom: result.profitMarginDom,
+        profitMarginIntl: result.profitMarginIntl
+      };
+      estimateItems.push(item);
+      renderEstimateList();
+    }
+
+    function renderEstimateList() {
+      const container = document.getElementById("estimateList");
+      container.innerHTML = "";
+      estimateItems.forEach((item, i) => {
+        const div = document.createElement("div");
+        div.className = "estimate-item";
+        div.innerHTML = `${item.name} <button onclick="removeEstimate(${i})">-</button>`;
+        container.appendChild(div);
+      });
+    }
+
+    function removeEstimate(index) {
+      estimateItems.splice(index, 1);
+      renderEstimateList();
+    }
+
+    function downloadCSV() {
+      if (!estimateItems.length) return;
+      const headers = Object.keys(estimateItems[0]).join(",");
+      const rows = estimateItems.map(item => Object.values(item).join(","));
+      const csv = [headers, ...rows].join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "cost_estimates.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>
